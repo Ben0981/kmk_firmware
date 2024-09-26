@@ -96,10 +96,6 @@ class Thumbstick(Module):
             if not (shifted_angle > min_angle and shifted_angle < max_angle):
                 direction = self.current_direction
 
-        print(angle, direction)
-        print(angle, direction)
-        print(angle, direction)
-
         return direction
 
     def process(self, keyboard):
