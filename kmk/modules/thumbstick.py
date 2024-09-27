@@ -2,6 +2,7 @@ from kmk.modules import Module
 from analogio import AnalogIn
 from digitalio import DigitalInOut, Direction, Pull
 import math
+from kmk.keys import KC
 
 
 class Thumbstick(Module):
@@ -12,8 +13,9 @@ class Thumbstick(Module):
         button_pin,
         directional_inputs,
         button_input,
+        combine_inputs=False,
         center_threshold=10000,
-        angle_threshold=3,
+        angle_threshold=3
     ):
         if len(directional_inputs) == 0:
             raise ValueError('At least one input must be provided')
@@ -26,17 +28,28 @@ class Thumbstick(Module):
             self.button = DigitalInOut(button_pin)
             self.button.direction = Direction.INPUT
             self.button.pull = Pull.UP
+            self.last_button_state = False
 
-        self.prev_press = None
+        self.prev_direction = None
         self.center_threshold = center_threshold  # Threshold for the center deadzone
-        self.angle_threshold = (
-            angle_threshold  # Threshold to remove jitter on the border between inputs
-        )
+        self.angle_threshold = angle_threshold  # Threshold to remove jitter on the border between inputs
         self.num_directions = len(directional_inputs)  # Number of directions
 
         self.current_direction = 0
 
-        self.inputs = [button_input] + directional_inputs[: self.num_directions]
+        if combine_inputs == False:
+            self.inputs = [button_input] + [[input] for input in directional_inputs[: self.num_directions]]
+        elif combine_inputs==True and len(directional_inputs) >= 2:
+            self.inputs = [button_input]
+            self.inputs.append([directional_inputs[0]])
+            print(self.inputs)
+            for count, input in enumerate(directional_inputs[1:]):
+                prev_input = directional_inputs[count]
+                self.inputs.append([prev_input, input])
+                self.inputs.append([input])
+                print(prev_input, input, self.inputs)
+        else:
+            raise ValueError('If `combine_inputs` is set to `True` the legth of `directional_inputs` must be at least 2')
 
     def during_bootup(self, keyboard):
         pass
@@ -103,26 +116,32 @@ class Thumbstick(Module):
         y = self.y_axis.value
 
         direction = self.get_direction(x, y)
-        key_to_press = self.inputs[direction]
+        keys_to_press = self.inputs[direction]
 
         self.current_direction = direction
 
         # Handle key press/release for direction
-        if key_to_press != self.prev_press:
-            if self.prev_press:
-                keyboard.process_key(self.prev_press, False)
+        if direction != self.prev_direction:
+            if self.prev_direction != None:
+                for key in self.inputs[self.prev_direction]:
+                    keyboard.process_key(key, False)
 
         if direction != 0:
-            keyboard.process_key(key_to_press, True)
+            for key in keys_to_press:
+                keyboard.process_key(key, True)
 
-            self.prev_press = key_to_press
+            self.prev_direction = direction
+        else:
+            self.prev_direction == None
 
         # Handle button press if configured
         if self.use_button:
             pressed = not self.button.value  # Button is active-low
             if pressed:
                 keyboard.process_key(self.inputs[0], True)
-            else:
+                self.last_button_state = True
+            elif self.last_button_state == True:
                 keyboard.process_key(self.inputs[0], False)
+                self.last_button_state = False
 
         return keyboard
